@@ -77,7 +77,7 @@ function findFile(dir, pattern) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isFile() && pattern.test(entry.name)) {
+    if (pattern.test(entry.name)) {
       return fullPath;
     }
     if (entry.isDirectory()) {
@@ -306,24 +306,13 @@ async function handleCIRunner(rootDir) {
   console.log('\n[4/4] 🔨 编译 Tauri iOS 原生工程与打包 IPA...');
   const xcodeProj = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.xcodeproj$/);
   const archivePath = path.join(tempDir, 'tauri-app.xcarchive');
-  
-  let built = false;
-  try {
-    logInfo('尝试使用 Tauri CLI 编译...');
-    run('pnpm tauri ios build');
-    built = true;
-  } catch (err) {
-    logWarning('Tauri CLI 默认构建未匹配到 iOS 目标机型，切换为 xcodebuild 直接归档编译 (-destination "generic/platform=iOS")...');
-  }
 
-  if (!built && xcodeProj) {
-    // 确保 Rust aarch64-apple-ios 目标完成编译
-    logInfo('编译 Rust aarch64-apple-ios 原生库...');
-    run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
+  logInfo('编译 Rust aarch64-apple-ios 原生核心库...');
+  run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
 
-    // 直接调用 xcodebuild 归档
-    logInfo('调用 xcodebuild 生成 iOS 归档包 (Archive)...');
-    run(`xcodebuild -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" archive CODE_SIGNING_ALLOWED=NO || xcodebuild -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" archive`);
+  if (xcodeProj) {
+    logInfo('调用 xcodebuild 归档 iOS 原生工程 (-destination "generic/platform=iOS")...');
+    run(`xcodebuild archive -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -allowProvisioningUpdates`);
   }
 
   const appPath = findFile(tempDir, /\.app$/, 'dir') ||
