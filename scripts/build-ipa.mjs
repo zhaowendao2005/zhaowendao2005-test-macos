@@ -295,8 +295,14 @@ async function handleCIRunner(rootDir) {
 
   // 4. 执行 Tauri iOS 编译
   console.log('\n[4/4] 🔨 编译 Tauri iOS 原生工程与打包 IPA...');
-  run('pnpm tauri ios build --export-method development');
+  try {
+    run('pnpm tauri ios build --export-method release-testing');
+  } catch (err) {
+    logInfo('尝试基础 release 编译...');
+    run('pnpm tauri ios build');
+  }
 
+  const generatedIpa = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.ipa$/i);
   const appPath = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.app$/) ||
                   findFile(path.join(rootDir, 'src-tauri', 'target'), /\.app$/);
 
