@@ -310,9 +310,17 @@ async function handleCIRunner(rootDir) {
   logInfo('编译 Rust aarch64-apple-ios 原生核心库...');
   run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
 
+  // 创建 tauri ios xcode-script 依赖的 server-addr 临时通信文件，防止 cli 崩溃
+  const tauriConf = JSON.parse(fs.readFileSync(path.join(rootDir, 'src-tauri', 'tauri.conf.json'), 'utf-8'));
+  const currentBundleId = tauriConf.identifier || 'app.lemon4360.cassava3192';
+  try {
+    fs.writeFileSync(path.join(os.tmpdir(), `${currentBundleId}-server-addr`), '');
+    fs.writeFileSync(`/tmp/${currentBundleId}-server-addr`, '');
+  } catch (e) {}
+
   if (xcodeProj) {
     logInfo('调用 xcodebuild 归档 iOS 原生工程 (-destination "generic/platform=iOS")...');
-    run(`xcodebuild archive -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO -allowProvisioningUpdates`);
+    run(`xcodebuild archive -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_STYLE=Manual -allowProvisioningUpdates`);
   }
 
   const appPath = findFile(tempDir, /\.app$/, 'dir') ||
