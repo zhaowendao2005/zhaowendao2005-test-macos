@@ -198,7 +198,9 @@ async function handleLocalTrigger(rootDir) {
   const gitStatus = runQuiet('git status --porcelain');
   if (gitStatus) {
     logInfo('发现本地有改动，正在自动提交并推送...');
-    run('git add .');
+    // 只提交受控的源码/配置改动，绝不把 dist-ipa、src-tauri/target、
+    // gen/apple(每次构建生成的工程)、p12 证书等产物/机密卷进提交。
+    run('git add .github/workflows/build-ios.yml scripts/build-ipa.mjs src src-tauri package.json pnpm-lock.yaml vite.config.ts tsconfig.json index.html');
     try {
       run('git commit -m "chore: auto update config and workflows"');
     } catch (e) {}

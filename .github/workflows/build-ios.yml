@@ -1,13 +1,12 @@
 name: Build iOS IPA
 
 on:
+  # 仅保留手动触发与正式发版标签，避免每次脚本 push 代码时额外自动触发一次
+  # 构建造成 macOS 配额双倍消耗（macOS runner 按分钟 10 倍计费）。
+  workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
     tags:
       - 'v*'
-  workflow_dispatch:
 
 jobs:
   build-ios:
