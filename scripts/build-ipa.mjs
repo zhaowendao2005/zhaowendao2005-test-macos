@@ -310,6 +310,28 @@ async function handleCIRunner(rootDir) {
   logInfo('编译 Rust aarch64-apple-ios 原生核心库...');
   run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
 
+  // 将编译出的 Rust 静态库放置到 Xcode 工程期望的 Externals 目录。
+  // 原本由 xcode-script 脚本阶段负责（其构建时会生成 libapp.a 到
+  // gen/apple/Externals/<arch>/<configuration>/），该阶段已被替换为 echo，
+  // 因此需要手动把 cargo 产物复制到位，否则链接器报 `library 'app' not found`。
+  {
+    const rustLibDir = path.join(rootDir, 'src-tauri', 'target', 'aarch64-apple-ios', 'release');
+    if (!fs.existsSync(rustLibDir)) {
+      logError(`未找到 Rust 编译产物目录: ${rustLibDir}`);
+      process.exit(1);
+    }
+    const candidates = fs.readdirSync(rustLibDir).filter((f) => /^lib.*\.a$/.test(f));
+    const staticLib = candidates.find((f) => f.includes('tauri_app_lib')) || candidates[0];
+    if (!staticLib) {
+      logError(`未在 ${rustLibDir} 中找到 .a 静态库产物`);
+      process.exit(1);
+    }
+    const externalsDir = path.join(rootDir, 'src-tauri', 'gen', 'apple', 'Externals', 'arm64', 'release');
+    fs.mkdirSync(externalsDir, { recursive: true });
+    fs.copyFileSync(path.join(rustLibDir, staticLib), path.join(externalsDir, 'libapp.a'));
+    logSuccess(`Rust 静态库 ${staticLib} 已放置到 ${path.relative(rootDir, path.join(externalsDir, 'libapp.a'))}`);
+  }
+
   // 优化 Xcode 工程文件：规避 CI 环境下 xcode-script 对 WebSocket 通信的依赖
   const pbxprojPath = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /project\.pbxproj$/);
   if (pbxprojPath) {
