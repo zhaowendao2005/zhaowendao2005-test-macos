@@ -304,16 +304,31 @@ async function handleCIRunner(rootDir) {
 
   // 4. 执行 Tauri iOS 编译
   console.log('\n[4/4] 🔨 编译 Tauri iOS 原生工程与打包 IPA...');
+  const xcodeProj = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.xcodeproj$/);
+  const archivePath = path.join(tempDir, 'tauri-app.xcarchive');
+  
+  let built = false;
   try {
-    run('pnpm tauri ios build --export-method release-testing');
-  } catch (err) {
-    logInfo('尝试基础 release 编译...');
+    logInfo('尝试使用 Tauri CLI 编译...');
     run('pnpm tauri ios build');
+    built = true;
+  } catch (err) {
+    logWarning('Tauri CLI 默认构建未匹配到 iOS 目标机型，切换为 xcodebuild 直接归档编译 (-destination "generic/platform=iOS")...');
   }
 
-  const generatedIpa = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.ipa$/i);
-  const appPath = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.app$/) ||
-                  findFile(path.join(rootDir, 'src-tauri', 'target'), /\.app$/);
+  if (!built && xcodeProj) {
+    // 确保 Rust aarch64-apple-ios 目标完成编译
+    logInfo('编译 Rust aarch64-apple-ios 原生库...');
+    run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
+
+    // 直接调用 xcodebuild 归档
+    logInfo('调用 xcodebuild 生成 iOS 归档包 (Archive)...');
+    run(`xcodebuild -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" archive CODE_SIGNING_ALLOWED=NO || xcodebuild -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" archive`);
+  }
+
+  const appPath = findFile(tempDir, /\.app$/, 'dir') ||
+                  findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /\.app$/, 'dir') ||
+                  findFile(path.join(rootDir, 'src-tauri', 'target'), /\.app$/, 'dir');
 
   if (!appPath) {
     logError('未找到编译生成的 .app 目录！');
