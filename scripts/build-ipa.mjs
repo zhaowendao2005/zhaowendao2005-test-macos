@@ -42,6 +42,36 @@ function runQuiet(command) {
   }
 }
 
+function importP12ToKeychain(certPath, p12Password, keychainPath, tempDir) {
+  let imported = false;
+  try {
+    run(`security import "${certPath}" -P "${p12Password}" -A -t cert -f pkcs12 -k "${keychainPath}" -T /usr/bin/codesign -T /usr/bin/security`);
+    imported = true;
+  } catch (err) {
+    logWarning('直接 security import 遇到兼容性问题，正在使用 OpenSSL 进行兼容格式重转换...');
+  }
+
+  if (!imported) {
+    const pemPath = path.join(tempDir, 'compat_cert.pem');
+    const compatP12Path = path.join(tempDir, 'compat_cert.p12');
+
+    // 1. 使用 openssl 解码为 PEM
+    try {
+      run(`openssl pkcs12 -in "${certPath}" -passin pass:"${p12Password}" -nodes -out "${pemPath}" -legacy`);
+    } catch (e) {
+      run(`openssl pkcs12 -in "${certPath}" -passin pass:"${p12Password}" -nodes -out "${pemPath}"`);
+    }
+
+    // 2. 重新打包为 macOS Keychain 100% 兼容的 PKCS12
+    try {
+      run(`openssl pkcs12 -export -in "${pemPath}" -out "${compatP12Path}" -passout pass:"${p12Password}" -legacy`);
+      run(`security import "${compatP12Path}" -P "${p12Password}" -A -t cert -f pkcs12 -k "${keychainPath}" -T /usr/bin/codesign -T /usr/bin/security`);
+    } catch (e) {
+      run(`security import "${pemPath}" -k "${keychainPath}" -A -T /usr/bin/codesign -T /usr/bin/security`);
+    }
+  }
+}
+
 function findFile(dir, pattern) {
   if (!fs.existsSync(dir)) return null;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -245,8 +275,7 @@ async function handleCIRunner(rootDir) {
     keychainPath = path.join(tempDir, 'app-signing.keychain-db');
     run(`security create-keychain -p "${keychainPassword}" "${keychainPath}"`);
     run(`security set-keychain-settings -lut 21600 "${keychainPath}"`);
-    run(`security unlock-keychain -p "${keychainPassword}" "${keychainPath}"`);
-    run(`security import "${certPath}" -P "${p12Password}" -A -t cert -f pkcs12 -k "${keychainPath}"`);
+    importP12ToKeychain(certPath, p12Password, keychainPath, tempDir);
     run(`security list-keychain -d user -s "${keychainPath}" $(security list-keychains -d user | tr -d '"')`);
     run(`security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychainPassword}" "${keychainPath}"`);
 
