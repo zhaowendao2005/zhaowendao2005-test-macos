@@ -314,8 +314,8 @@ async function handleCIRunner(rootDir) {
   const tauriConf = JSON.parse(fs.readFileSync(path.join(rootDir, 'src-tauri', 'tauri.conf.json'), 'utf-8'));
   const currentBundleId = tauriConf.identifier || 'app.lemon4360.cassava3192';
   try {
-    fs.writeFileSync(path.join(os.tmpdir(), `${currentBundleId}-server-addr`), '');
-    fs.writeFileSync(`/tmp/${currentBundleId}-server-addr`, '');
+    fs.writeFileSync(path.join(os.tmpdir(), `${currentBundleId}-server-addr`), 'http://127.0.0.1:1420');
+    fs.writeFileSync(`/tmp/${currentBundleId}-server-addr`, 'http://127.0.0.1:1420');
   } catch (e) {}
 
   if (xcodeProj) {
