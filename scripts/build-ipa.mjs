@@ -310,13 +310,17 @@ async function handleCIRunner(rootDir) {
   logInfo('编译 Rust aarch64-apple-ios 原生核心库...');
   run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
 
-  // 创建 tauri ios xcode-script 依赖的 server-addr 临时通信文件，防止 cli 崩溃
-  const tauriConf = JSON.parse(fs.readFileSync(path.join(rootDir, 'src-tauri', 'tauri.conf.json'), 'utf-8'));
-  const currentBundleId = tauriConf.identifier || 'app.lemon4360.cassava3192';
-  try {
-    fs.writeFileSync(path.join(os.tmpdir(), `${currentBundleId}-server-addr`), 'http://127.0.0.1:1420');
-    fs.writeFileSync(`/tmp/${currentBundleId}-server-addr`, 'http://127.0.0.1:1420');
-  } catch (e) {}
+  // 优化 Xcode 工程文件：规避 CI 环境下 xcode-script 对 WebSocket 通信的依赖
+  const pbxprojPath = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /project\.pbxproj$/);
+  if (pbxprojPath) {
+    let pbxContent = fs.readFileSync(pbxprojPath, 'utf-8');
+    if (pbxContent.includes('tauri ios xcode-script') || pbxContent.includes('xcode-script')) {
+      pbxContent = pbxContent.replace(/pnpm tauri ios xcode-script[^\n;"]*/g, 'echo "Rust code pre-compiled successfully"')
+                             .replace(/tauri ios xcode-script[^\n;"]*/g, 'echo "Rust code pre-compiled successfully"');
+      fs.writeFileSync(pbxprojPath, pbxContent, 'utf-8');
+      logSuccess('已自动解除 Xcode 工程对本地 WebSocket 通信的依赖');
+    }
+  }
 
   if (xcodeProj) {
     logInfo('调用 xcodebuild 归档 iOS 原生工程 (-destination "generic/platform=iOS")...');
