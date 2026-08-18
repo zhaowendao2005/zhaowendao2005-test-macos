@@ -42,6 +42,25 @@ function runQuiet(command) {
   }
 }
 
+// xcodebuild 封装：自动重试。macos-15 runner 镜像存在已知 bug
+// (actions/runner-images#13560)：storyboard 编译偶发报 “iOS Platform Not
+// Installed” 而 SDK 实际存在，重试+清理 DerivedData 可稳定规避。
+function runXcodebuild(buildArgs, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      run(buildArgs);
+      return;
+    } catch (err) {
+      logWarning(`xcodebuild 第 ${attempt}/${maxRetries} 次执行失败，正在清理缓存并重试...`);
+      if (attempt < maxRetries) {
+        runQuiet('rm -rf ~/Library/Developer/Xcode/DerivedData');
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 function importP12ToKeychain(certPath, p12Password, keychainPath, tempDir) {
   let imported = false;
   try {
@@ -353,7 +372,7 @@ async function handleCIRunner(rootDir) {
 
   if (xcodeProj) {
     logInfo('调用 xcodebuild 归档 iOS 原生工程 (-destination "generic/platform=iOS")...');
-    run(`xcodebuild archive -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_STYLE=Manual -allowProvisioningUpdates`);
+    runXcodebuild(`xcodebuild archive -project "${xcodeProj}" -scheme tauri-app_iOS -configuration release -destination "generic/platform=iOS" -archivePath "${archivePath}" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_STYLE=Manual -allowProvisioningUpdates`);
   }
 
   const appPath = findFile(tempDir, /\.app$/, 'dir') ||

@@ -12,7 +12,9 @@ on:
 jobs:
   build-ios:
     name: Build & Package iOS IPA
-    runs-on: macos-15
+    # macos-15 runner 存在已知 bug：storyboard 编译偶发报 “iOS Platform Not
+    # Installed”（actions/runner-images#13560），macos-14 稳定可用。
+    runs-on: macos-14
 
     steps:
       - name: Checkout repository
