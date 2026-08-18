@@ -107,6 +107,23 @@ function findFile(dir, pattern) {
   return null;
 }
 
+// 下载 IPA 前，把本地已存在的旧 .ipa 加上时间戳备份，以便新文件能直接写入覆盖。
+function backupExistingIpa(dir) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir);
+  const oldFiles = entries.filter((f) => /\.ipa$/i.test(f));
+  if (oldFiles.length === 0) return;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  for (const f of oldFiles) {
+    const src = path.join(dir, f);
+    const ext = path.extname(f);
+    const base = path.basename(f, ext);
+    const dst = path.join(dir, `${base}-${ts}${ext}`);
+    fs.renameSync(src, dst);
+    logInfo(`旧版本已备份为: ${path.basename(dst)}`);
+  }
+}
+
 // -------------------------------------------------------------
 // 本地 Windows/Linux 客户端：自动读取证书 -> 配置 GitHub Secrets -> 触发构建 -> 下载 IPA
 // -------------------------------------------------------------
@@ -233,10 +250,16 @@ async function handleLocalTrigger(rootDir) {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
-    try {
-      run(`gh run download ${runId} -n tauri-ios-ipa -D "${outputDir}"`);
+    // 旧 .ipa 加时间戳备份，避免 gh download 因文件已存在而失败
+    backupExistingIpa(outputDir);
+    runQuiet(`gh run download ${runId} -n tauri-ios-ipa -D "${outputDir}" --force`);
+    // 判断是否真正拿到产物
+    const ipaCount = fs.existsSync(outputDir)
+      ? fs.readdirSync(outputDir).filter((f) => /\.ipa$/i.test(f)).length
+      : 0;
+    if (ipaCount > 0) {
       logSuccess(`IPA 文件已成功下载至: ${outputDir}`);
-    } catch (e) {
+    } else {
       logWarning(`未能自动下载产物，您可以稍后访问 GitHub 仓库 Actions 页面直接下载。`);
     }
   } else {
