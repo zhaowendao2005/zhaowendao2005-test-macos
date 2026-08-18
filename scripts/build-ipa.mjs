@@ -314,10 +314,17 @@ async function handleCIRunner(rootDir) {
   const pbxprojPath = findFile(path.join(rootDir, 'src-tauri', 'gen', 'apple'), /project\.pbxproj$/);
   if (pbxprojPath) {
     let pbxContent = fs.readFileSync(pbxprojPath, 'utf-8');
-    if (pbxContent.includes('tauri ios xcode-script') || pbxContent.includes('xcode-script')) {
-      pbxContent = pbxContent.replace(/pnpm tauri ios xcode-script[^\n;"]*/g, 'echo "Rust code pre-compiled successfully"')
-                             .replace(/tauri ios xcode-script[^\n;"]*/g, 'echo "Rust code pre-compiled successfully"');
+    if (/shellScript = ".*xcode-script.*";/.test(pbxContent)) {
+      // 整行替换整个 PBXShellScriptBuildPhase 的 shellScript 值，
+      // 避免部分正则替换在 pbxproj 内残留未转义的双引号/分号导致工程文件损坏
+      pbxContent = pbxContent.replace(/^\s*shellScript = (".*xcode-script.*");\s*$/gm, '\t\t\tshellScript = "echo Rust code pre-compiled successfully";');
       fs.writeFileSync(pbxprojPath, pbxContent, 'utf-8');
+      // 用 plutil 校验替换后的 pbxproj 语法，防止工程文件损坏
+      const lintResult = runQuiet(`plutil -lint "${pbxprojPath}"`);
+      if (!lintResult.includes('OK')) {
+        logError(`pbxproj 替换后语法校验失败: ${lintResult}`);
+        process.exit(1);
+      }
       logSuccess('已自动解除 Xcode 工程对本地 WebSocket 通信的依赖');
     }
   }
