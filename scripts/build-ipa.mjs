@@ -275,9 +275,12 @@ async function handleCIRunner(rootDir) {
     keychainPath = path.join(tempDir, 'app-signing.keychain-db');
     run(`security create-keychain -p "${keychainPassword}" "${keychainPath}"`);
     run(`security set-keychain-settings -lut 21600 "${keychainPath}"`);
+    run(`security unlock-keychain -p "${keychainPassword}" "${keychainPath}"`);
     importP12ToKeychain(certPath, p12Password, keychainPath, tempDir);
+    run(`security default-keychain -s "${keychainPath}"`);
     run(`security list-keychain -d user -s "${keychainPath}" $(security list-keychains -d user | tr -d '"')`);
     run(`security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychainPassword}" "${keychainPath}"`);
+    run(`security unlock-keychain -p "${keychainPassword}" "${keychainPath}"`);
 
     signingIdentity = runQuiet(`security find-identity -v -p codesigning "${keychainPath}" | head -n 1 | awk -F '"' '{print $2}'`);
     logSuccess(`解析到签名 Identity: ${signingIdentity}`);
@@ -286,6 +289,12 @@ async function handleCIRunner(rootDir) {
   }
 
   if (mobileProvisionPath) {
+    const mpContent = fs.readFileSync(mobileProvisionPath, 'binary');
+    const teamMatch = mpContent.match(/<key>TeamIdentifier<\/key>\s*<array>\s*<string>([^<]+)<\/string>/);
+    if (teamMatch && teamMatch[1]) {
+      process.env.APPLE_DEVELOPMENT_TEAM = teamMatch[1];
+      logSuccess(`设置 APPLE_DEVELOPMENT_TEAM: ${teamMatch[1]}`);
+    }
     const userProfilesDir = path.join(os.homedir(), 'Library', 'MobileDevice', 'Provisioning Profiles');
     if (!fs.existsSync(userProfilesDir)) {
       fs.mkdirSync(userProfilesDir, { recursive: true });
