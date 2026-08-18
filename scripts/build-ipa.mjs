@@ -327,7 +327,9 @@ async function handleCIRunner(rootDir) {
   const archivePath = path.join(tempDir, 'tauri-app.xcarchive');
 
   logInfo('编译 Rust aarch64-apple-ios 原生核心库...');
-  run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release');
+  // 必须启用 tauri/custom-protocol feature：tauri 据此判定为 release 模式（dev="!custom-protocol"），
+  // 否则启动时会去请求 devUrl(http://localhost:1420) 而不是加载嵌入前端资源（tauri cli 构建时会强制注入该 feature）。
+  run('cargo build --manifest-path src-tauri/Cargo.toml --target aarch64-apple-ios --release --lib --features tauri/custom-protocol');
 
   // 将编译出的 Rust 静态库放置到 Xcode 工程期望的 Externals 目录。
   // 原本由 xcode-script 脚本阶段负责（其构建时会生成 libapp.a 到
